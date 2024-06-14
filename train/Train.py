@@ -1,0 +1,62 @@
+import torch
+import pandas as pd
+import zipfile
+from Dataset import CORAADisfluencyDataset
+from Model import DisfluencyModel
+from Trainer import Trainer
+import os
+
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+
+METADATA_TEST = '/workspace/Datasets/CORAA/_metadata_/metadata_test_final.csv'
+METADATA_TRAIN = '/workspace/Datasets/CORAA/_metadata_/metadata_train_final.csv'
+metadata_train = pd.read_csv(METADATA_TRAIN)
+metadata_test = pd.read_csv(METADATA_TEST)
+
+data_dir = '/workspace/Datasets/CORAA/'
+train_dataset = CORAADisfluencyDataset(metadata_train, data_dir)
+print(f"Total train files: {len(train_dataset)}")
+test_dataset = CORAADisfluencyDataset(metadata_test, data_dir)
+print(f"Total validation files: {len(test_dataset)}")
+
+train_loader = torch.utils.data.DataLoader(
+    train_dataset,
+    shuffle=True,
+    num_workers=8,
+    batch_size=64
+)
+test_loader = torch.utils.data.DataLoader(
+    test_dataset,
+    batch_size=16
+)
+
+CONFIG = {
+    "max_epochs": 400, 
+    "log_interval_updates": 5,
+    "save_interval_updates": 100,
+    "keep_interval_updates": 3,
+    "max_updates": None,
+    "device": DEVICE,
+    "random_seed": 1,
+    "optimizer": {
+        "lr": 0.0001
+    }
+}
+
+model = DisfluencyModel()
+trainer = Trainer(
+    model,
+    train_loader,
+    test_loader,
+    CONFIG
+)
+
+last_checkpoint_path = "logs/2024-06-10_04-42-03/checkpoint_last.pt"
+if os.path.exists(last_checkpoint_path):
+    trainer.load_checkpoint(last_checkpoint_path)
+else:
+    print(f"Nenhum checkpoint encontrado em {last_checkpoint_path}. Iniciando treinamento do zero.")
+
+
+
+trainer.train()
