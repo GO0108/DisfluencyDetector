@@ -5,17 +5,42 @@ import torch.nn as nn
 import torch.nn.functional as F
 import math
 
+'''
+class Wav2Vec2FeatureExtractor(torch.nn.Module):
+    def __init__(
+        self,
+        feat_layer=24,
+        bundle=torchaudio.pipelines.WAV2VEC2_XLSR53,
+        device=DEVICE
+    ):
+        super().__init__()
+        self.sample_rate = bundle.sample_rate
+        self.model = bundle.get_model().to(DEVICE)
+        self.feat_layer = feat_layer
+        self.device = device
 
+
+    def forward(self, waveform: torch.Tensor) -> torch.Tensor:
+        waveform = waveform.squeeze(1)
+        features, _ = self.model.extract_features(waveform.to(self.device), num_layers=self.feat_layer)
+        return features[-1]
+'''
 
 class Wav2Vec2FeatureExtractor(nn.Module):
-    def __init__(self):
+    def __init__(self, freeze=True):
         super(Wav2Vec2FeatureExtractor, self).__init__()
         self.model = Wav2Vec2Model.from_pretrained("facebook/wav2vec2-base-960h")
+        self.freeze=freeze 
 
     def forward(self, waveform):
+        
         waveform = waveform.squeeze(1)
-        with torch.no_grad():
-            x = self.model(waveform).last_hidden_state 
+
+        if self.freeze:
+            with torch.no_grad():
+                x = self.model(waveform).last_hidden_state 
+        else:
+            x = self.model(waveform).last_hidden_state
         return x
 
 
@@ -136,3 +161,15 @@ class DisfluencyModel(nn.Module):
 
         return  output
 
+class Wav2Vec_DisfluencyModel(nn.Module):
+    def __init__(self):
+        super(Wav2Vec_DisfluencyModel, self).__init__()
+        self.feature_extractor = Wav2Vec2FeatureExtractor(freeze=False)
+        self.fc = nn.Linear(768, 2)
+        
+    def forward(self, audio_input):
+        features = self.feature_extractor(audio_input)
+        features = features.mean(dim=1) 
+        output = self.fc(features)
+
+        return  output
