@@ -1,0 +1,4 @@
+pandas
+transformers
+transformers[torch]
+tensorboard
