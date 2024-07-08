@@ -4,13 +4,14 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import math
-
-'''
+import torchaudio
+DEVICE = 'cuda'
+"""
 class Wav2Vec2FeatureExtractor(torch.nn.Module):
     def __init__(
         self,
-        feat_layer=24,
-        bundle=torchaudio.pipelines.WAV2VEC2_XLSR53,
+        feat_layer=12,
+        bundle=torchaudio.pipelines.WAV2VEC2_BASE,
         device=DEVICE
     ):
         super().__init__()
@@ -24,12 +25,12 @@ class Wav2Vec2FeatureExtractor(torch.nn.Module):
         waveform = waveform.squeeze(1)
         features, _ = self.model.extract_features(waveform.to(self.device), num_layers=self.feat_layer)
         return features[-1]
-'''
-
+    
+    """
 class Wav2Vec2FeatureExtractor(nn.Module):
-    def __init__(self, freeze=True):
+    def __init__(self, freeze=True, model="facebook/wav2vec2-base-960h"):
         super(Wav2Vec2FeatureExtractor, self).__init__()
-        self.model = Wav2Vec2Model.from_pretrained("facebook/wav2vec2-base-960h")
+        self.model = Wav2Vec2Model.from_pretrained(model)
         self.freeze=freeze 
 
     def forward(self, waveform):
@@ -42,6 +43,7 @@ class Wav2Vec2FeatureExtractor(nn.Module):
         else:
             x = self.model(waveform).last_hidden_state
         return x
+        
 
 
 class CNNExtractor(nn.Module):
@@ -164,12 +166,34 @@ class DisfluencyModel(nn.Module):
 class Wav2Vec_DisfluencyModel(nn.Module):
     def __init__(self):
         super(Wav2Vec_DisfluencyModel, self).__init__()
-        self.feature_extractor = Wav2Vec2FeatureExtractor(freeze=False)
-        self.fc = nn.Linear(768, 2)
+        self.feature_extractor = Wav2Vec2FeatureExtractor(freeze=True, model="facebook/wav2vec2-base-960h")
+        
+        
+        # if self.feature_extractor is not None:
+        #     for param in self.feature_extractor.parameters():
+        #         param.requires_grad = False
+
+        out_dim = 128
+        w2v_dim=768
+        duration=7
+        num_labels=2
+        self.fc = nn.Sequential(
+            nn.Linear(w2v_dim, out_dim),
+            nn.ReLU(),
+            nn.Dropout()
+        )
+        self.flatten = nn.Flatten()
+        self.linear = nn.Linear(out_dim*(int(50*duration)-1), num_labels)
+        self.log_softmax = nn.LogSoftmax(dim=1)
         
     def forward(self, audio_input):
         features = self.feature_extractor(audio_input)
-        features = features.mean(dim=1) 
-        output = self.fc(features)
+        x = self.fc(features)
+        # B, T, C -> B, (TxC)
+        x = self.flatten(x)
+        x = self.linear(x)
+      
+        output = self.log_softmax(x)
+        
 
         return  output
